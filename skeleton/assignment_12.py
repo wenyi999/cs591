@@ -563,15 +563,16 @@ if __name__ == "__main__":
     #       AND R.MID = 'M'
 
     # YOUR CODE HERE
-    filter_friend=Filter.remote(sys.argv[2],0)
-    scan_friends=Scan.remote("../data/friends.txt",filter_friend,False,False)
-    filter_movie=Filter.remote(sys.argv[4],1)
-    scan_movies=Scan.remote("../data/movie_ratings.txt",filter_movie,False,False)
-    join_opt=Join.remote(scan_friends,scan_movies,1,0,False,False)
-    average=AggFun.remote()
-    #projection=Project.remote(join_opt,[4],False,False)
-    ans1=ray.get(average.AVG.remote(join_opt.get_next.remote(),4))
-    logger.info(ans1)
+    if sys.argv[2]=="1":
+        filter_friend=Filter.remote(sys.argv[8],0)
+        scan_friends=Scan.remote(sys.argv[4],filter_friend,False,False)
+        filter_movie=Filter.remote(sys.argv[10],1)
+        scan_movies=Scan.remote(sys.argv[6],filter_movie,False,False)
+        join_opt=Join.remote(scan_friends,scan_movies,1,0,False,False)
+        average=AggFun.remote()
+        #projection=Project.remote(join_opt,[4],False,False)
+        ans1=ray.get(average.AVG.remote(join_opt.get_next.remote(),4))
+        logger.info(ans1)
 
     # TASK 2: Implement recommendation query for User A
     #
@@ -585,19 +586,20 @@ if __name__ == "__main__":
     #        LIMIT 1 )
 
     # YOUR CODE HERE
-    filter_friend=Filter.remote(sys.argv[2],0)
-    scan_friends=Scan.remote("../data/friends.txt",filter_friend,False,False)
-    scan_movies=Scan.remote("../data/movie_ratings.txt",None,False,False)
-    join_opt=Join.remote(scan_friends,scan_movies,1,0,False,False)
-    projection_pre=Project.remote(join_opt,[3,4],False,False)
-    average=AggFun.remote()
-    group_by_opt=GroupBy.remote(projection_pre,0,1,average,False,False)
-    compare_opt=Comparator.remote(1)
-    order_by_opt=OrderBy.remote(group_by_opt,compare_opt,False,False,False)
-    top_k_opt=TopK.remote(order_by_opt,1,False,False)
-    projection=Project.remote(top_k_opt,[0],False,False)
-    ans2=ray.get(projection.get_next.remote())[0]
-    logger.info(int(ans2.tuple))
+    if sys.argv[2]=="2"
+        filter_friend=Filter.remote(sys.argv[8],0)
+        scan_friends=Scan.remote(sys.argv[4],filter_friend,False,False)
+        scan_movies=Scan.remote(sys.argv[6],None,False,False)
+        join_opt=Join.remote(scan_friends,scan_movies,1,0,False,False)
+        projection_pre=Project.remote(join_opt,[3,4],False,False)
+        average=AggFun.remote()
+        group_by_opt=GroupBy.remote(projection_pre,0,1,average,False,False)
+        compare_opt=Comparator.remote(1)
+        order_by_opt=OrderBy.remote(group_by_opt,compare_opt,False,False,False)
+        top_k_opt=TopK.remote(order_by_opt,1,False,False)
+        projection=Project.remote(top_k_opt,[0],False,False)
+        ans2=ray.get(projection.get_next.remote())[0]
+        logger.info(int(ans2.tuple))
 
     # TASK 3: Implement explanation query for User A and Movie M
     #
@@ -608,16 +610,17 @@ if __name__ == "__main__":
     #       AND R.MID = 'M'
 
     # YOUR CODE HERE
-    filter_friend=Filter.remote(sys.argv[2],0)
-    scan_friends=Scan.remote("../data/friends.txt",filter_friend,False,False)
-    filter_movie=Filter.remote(sys.argv[4],1)
-    scan_movies=Scan.remote("../data/movie_ratings.txt",filter_movie,False,False)
-    join_opt=Join.remote(scan_friends,scan_movies,1,0,False,False)
-    #average=AggFun.remote()
-    #projection=Project.remote(join_opt,[4],False,False)
-    hist_opt=Histogram.remote(join_opt,4,False,False)
-    ans3=ray.get(hist_opt.get_next.remote())
-    logger.info(ans3)
+    if sys.argv[2]=="3"
+        filter_friend=Filter.remote(sys.argv[8],0)
+        scan_friends=Scan.remote(sys.argv[4],filter_friend,False,False)
+        filter_movie=Filter.remote(sys.argv[10],1)
+        scan_movies=Scan.remote(sys.argv[6],filter_movie,False,False)
+        join_opt=Join.remote(scan_friends,scan_movies,1,0,False,False)
+        #average=AggFun.remote()
+        #projection=Project.remote(join_opt,[4],False,False)
+        hist_opt=Histogram.remote(join_opt,4,False,False)
+        ans3=ray.get(hist_opt.get_next.remote())
+        logger.info(ans3)
 
     # TASK 4: Turn your data operators into Ray actors
     #
