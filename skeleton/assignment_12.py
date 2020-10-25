@@ -756,3 +756,44 @@ if __name__ == "__main__":
     # TASK 4: Retrieve most responsible tuples for movie recommendation
 
     # YOUR CODE HERE
+    if sys.argv[2]=="2":
+        all_how=group_by_opt2.intermediate
+        #request=all_how[ans2.tuple]
+        ans_key=projection2.intermediate[ans2.tuple].tuple
+        max=ans_key.split(" ")[1]
+        max_other=0
+        if len(all_how[ans_key])==1:
+            responsibility_list=all_how[ans_key][0].tuple.split(" ")
+            logger.info( [((responsibility_list[0],responsibility_list[1]),1),((responsibility_list[2],responsibility_list[3],responsibility_list[4]),1)])
+        elif len(all_how[ans_key])==2:
+            t1=all_how[ans_key][0].tuple.split(" ")
+            t2=all_how[ans_key][1].tuple.split(" ")
+            if(t1[4]>max):
+                logger.info( [((t1[0],t1[1]),1),((t1[2],t1[3],t1[4]),1)])
+            if(t2[4]>max):
+                logger.info( [((t2[0],t2[1]),1),((t2[2],t2[3],t2[4]),1)])
+            else:
+                logger.info( [((t1[0],t1[1]),0.5),((t1[2],t1[3],t1[4]),0.5),((t2[0],t2[1]),0.5),((t2[2],t2[3],t2[4]),0.5)])
+        else:
+            ans_list=[]
+            for i in all_how:
+                temp_score=i.split(" ")[1]
+                if max_other<temp_score:
+                    max_other=temp_score
+            for i in all_how[ans_key]:
+                test_for_counterfactual=(len(all_how[ans_key])*max-i.tuple.split(" ")[4])/(len(all_how[ans_key])-1)
+                if test_for_counterfactual<max_other:
+                    temp=i.tuple.split(" ")
+                    ans_list.append(((temp[0],temp[1]),1))
+                    ans_list.append(((temp[2],temp[3],temp[4]),1))
+            for i in all_how[ans_key]:
+                for j in all_how[ans_key]:
+                    if i!=j:
+                        test_for_05=(len(all_how[ans_key])*max-i.tuple.split(" ")[4]-j.tuple.split(" ")[4])/(len(all_how[ans_key])-2)
+                        if test_for_05<max_other:
+                            temp=i.tuple.split(" ")
+                            ans_list.append(((temp[0],temp[1]),0.5))
+                            ans_list.append(((temp[2],temp[3],temp[4]),0.5))
+                            break
+            logger.info(ans_list)
+
