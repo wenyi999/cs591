@@ -48,7 +48,7 @@ class ATuple:
         pass
 
     # Returns the How-provenance of self
-    def how() -> string:
+    def how(self) -> string:
         # YOUR CODE HERE (ONLY FOR TASK 3 IN ASSIGNMENT 2)
         return self.metadata
         pass
@@ -131,7 +131,13 @@ class Scan(Operator):
                 if self.filter:
                     if not self.filter.apply(tuple1):
                         continue
-                atuple1=ATuple(tuple1,None,self)
+                if self.propagate_prov:
+                    if self.filepath=="../data/friends.txt":
+                        atuple1=ATuple(tuple1,"f"+str(self.linenum),self)
+                    else:
+                        atuple1=ATuple(tuple1,"r"+str(self.linenum),self)
+                else:
+                    atuple1=ATuple(tuple1,None,self)
                 if self.track_prov:
                     self.intermediate[tuple1]=self.linenum
                 AT_list.append(atuple1)
@@ -219,7 +225,10 @@ class Join(Operator):
                 if num_list2[self.right_join_attribute] in self.dict1:
                     for j in self.dict1[num_list2[self.right_join_attribute]]:
                         str_tuple=j.tuple+' '+i.tuple
-                        atuple1=ATuple(str_tuple,None,self)
+                        if self.propagate_prov:
+                            atuple1=ATuple(str_tuple,j.metadata+"*"+i.metadata,self)
+                        else:
+                            atuple1=ATuple(str_tuple,None,self)
                         result.append(atuple1)
                         if self.track_prov:
                             self.intermediate[atuple1.tuple]=[j,i]
@@ -300,7 +309,10 @@ class Project(Operator):
             for j in self.fields_to_keep:
                 str1+=att_list[j]
                 str1+=" "
-            result=ATuple(str1[0:-1],None,self)
+            if self.propagate_prov:
+                result=ATuple(str1[0:-1],i.metadata,self)
+            else:
+                result=ATuple(str1[0:-1],None,self)
             return_list.append(result)
             if self.track_prov:
                 self.intermediate[result.tuple]=i
@@ -379,7 +391,15 @@ class GroupBy(Operator):
         for j in input_list:
             real_tuple_list=input_list[j][0].tuple.split(" ")
             tuple1=real_tuple_list[self.key]+" "+str(self.agg_fun.AVG(input_list[j],self.value))
-            atuple1=ATuple(tuple1,None,self)
+            if self.propagate_prov:
+                metadata_str=""
+                for k in input_list[j]:
+                    k_list=k.tuple.split(" ")
+                    metadata_str=metadata_str+" ("+k.metadata+"@"+k_list[self.value]+"),"
+
+                atuple1=ATuple(tuple1,"AVG("+metadata_str[:-1]+" )",self)
+            else:
+                atuple1=ATuple(tuple1,None,self)
             output_list.append(atuple1)
             if self.track_prov:
                 self.intermediate[atuple1.tuple]=input_list[j]
@@ -494,7 +514,10 @@ class OrderBy(Operator):
             if not input1:
                 break
             for i in input1:
-                output_list.append(ATuple(i.tuple,None,self))
+                if self.propagate_prov:
+                    output_list.append(ATuple(i.tuple,i.metadata,self))
+                else:
+                    output_list.append(ATuple(i.tuple,None,self))
         return self.comparator.apply(output_list,self.ASC)
         pass
 
@@ -547,7 +570,10 @@ class TopK(Operator):
             return input1[0]
         output_list=[]
         for i in range(0,self.k):
-            output_list.append(ATuple(input1[i].tuple,None,self))
+            if self.propagate_prov:
+                output_list.append(ATuple(input1[i].tuple,input1[i].metadata,self))
+            else:
+                output_list.append(ATuple(input1[i].tuple,None,self))
         return output_list
         pass
 
@@ -645,16 +671,16 @@ if __name__ == "__main__":
     # YOUR CODE HERE
     if sys.argv[2]=="2":
         filter_friend2=Filter(sys.argv[8],0)
-        scan_friends2=Scan(sys.argv[4],filter_friend2,True,False)
-        scan_movies2=Scan(sys.argv[6],None,True,False)
-        join_opt2=Join(scan_friends2,scan_movies2,1,0,True,False)
-        #projection_pre2=Project(join_opt2,[3,4],True,False)
+        scan_friends2=Scan(sys.argv[4],filter_friend2,True,True)
+        scan_movies2=Scan(sys.argv[6],None,True,True)
+        join_opt2=Join(scan_friends2,scan_movies2,1,0,True,True)
+        #projection_pre2=Project(join_opt2,[3,4],True,True)
         average2=AggFun()
-        group_by_opt2=GroupBy(join_opt2,3,4,average2,True,False)
+        group_by_opt2=GroupBy(join_opt2,3,4,average2,True,True)
         compare_opt2=Comparator(1)
-        order_by_opt2=OrderBy(group_by_opt2,compare_opt2,False,True,False)
-        top_k_opt2=TopK(order_by_opt2,1,True,False)
-        projection2=Project(top_k_opt2,[0],True,False)
+        order_by_opt2=OrderBy(group_by_opt2,compare_opt2,False,True,True)
+        top_k_opt2=TopK(order_by_opt2,1,True,True)
+        projection2=Project(top_k_opt2,[0],True,True)
         ans2=projection2.get_next()[0]
         logger.info(int(ans2.tuple))
 
@@ -716,6 +742,8 @@ if __name__ == "__main__":
 
     # YOUR CODE HERE
     if sys.argv[2]=="2":
+        """ 
+        another way
         half_len=int(len(ans_tuple_list)/2)
         as2_tsk3=""
         for i in range(half_len):
@@ -723,6 +751,8 @@ if __name__ == "__main__":
             as2_tsk3=as2_tsk3+one_pair
         as2_tsk3="AVG( "+as2_tsk3[0:len(as2_tsk3)-2]+" )"
         logger.info(as2_tsk3)
+        """
+        logger.info(ans2.how())
     # TASK 4: Retrieve most responsible tuples for movie recommendation
 
     # YOUR CODE HERE
