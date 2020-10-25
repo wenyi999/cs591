@@ -24,7 +24,6 @@ def _generate_uuid():
 # Custom tuple class with optional metadata
 class ATuple:
     """Custom tuple.
-
     Attributes:
         tuple (Tuple): The actual tuple.
         metadata (string): The tuple metadata (e.g. provenance annotations).
@@ -36,29 +35,34 @@ class ATuple:
         self.operator = operator
 
     # Returns the lineage of self
-    def lineage() -> List[ATuple]:
+    def lineage(self) -> List[ATuple]:
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        temp=[[ATuple(self.tuple,self.metadata,self.operator)]]
+        return self.operator.lineage(temp)
         pass
 
     # Returns the Where-provenance of the attribute at index 'att_index' of self
     def where(att_index) -> List[Tuple]:
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        return self.operator.where(att_index,self)
         pass
 
     # Returns the How-provenance of self
     def how() -> string:
         # YOUR CODE HERE (ONLY FOR TASK 3 IN ASSIGNMENT 2)
+
         pass
 
     # Returns the input tuples with responsibility \rho >= 0.5 (if any)
     def responsible_inputs() -> List[Tuple]:
         # YOUR CODE HERE (ONLY FOR TASK 4 IN ASSIGNMENT 2)
         pass
+    #def __eq__(self, value):
+     #   return self.tuple==value.tuple and self.metadata==value.metadata and self.operator==value.operator
 
 # Data operator
 class Operator:
     """Data operator (parent class).
-
     Attributes:
         id (string): Unique operator ID.
         name (string): Operator name.
@@ -91,7 +95,6 @@ class Operator:
 # Scan operator
 class Scan(Operator):
     """Scan operator.
-
     Attributes:
         filepath (string): The path to the input file.
         filter (function): An optional user-defined filter.
@@ -112,6 +115,8 @@ class Scan(Operator):
         #self.propagate_prov=propagate_prov
         f=open(self.filepath)
         self.f_csv = csv.reader(f)
+        self.intermediate={}
+        self.linenum=0
         pass
 
     # Returns next batch of tuples in given file (or None if file exhausted)
@@ -121,12 +126,15 @@ class Scan(Operator):
         try:
             while len(AT_list)<5:
                 headers = next(self.f_csv)
+                self.linenum+=1;
                 tuple1=headers[0]
                 if self.filter:
                     if not self.filter.apply(tuple1):
                         continue
-                atuple=ATuple(tuple1,None,Scan)
-                AT_list.append(atuple)
+                atuple1=ATuple(tuple1,None,self)
+                if self.track_prov:
+                    self.intermediate[tuple1]=self.linenum
+                AT_list.append(atuple1)
         except StopIteration:
             return AT_list
         return AT_list
@@ -135,12 +143,21 @@ class Scan(Operator):
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        return tuples
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        ans_list=[]
+        for i in tuples:
+            tuple1=i.tuple
+            tuple1_list=tuple1.split(" ")
+            att_value=tuple1_list[att_index]
+            ans_tuple=(self.filepath,self.intermediate[tuple1],tuple1,att_value)
+            ans_list.append(ans_tuple)
+        return ans_list
         pass
 
 class Filter:
@@ -154,7 +171,6 @@ class Filter:
 # Equi-join operator
 class Join(Operator):
     """Equi-join operator.
-
     Attributes:
         left_input (Operator): A handle to the left input.
         right_input (Operator): A handle to the left input.
@@ -178,13 +194,13 @@ class Join(Operator):
         self.left_join_attribute=left_join_attribute
         self.right_join_attribute=right_join_attribute
         self.dict1={}
+        self.intermediate={}
         left_result="0"
         i=1
         while(len(left_result)==5 or i==1):
             i=0
             left_result=left_input.get_next()
             for i in left_result:
-                #logger.debug(i.tuple)
                 num_list=i.tuple.split(' ')
                 try:
                     self.dict1[num_list[left_join_attribute]].append(i)
@@ -203,8 +219,10 @@ class Join(Operator):
                 if num_list2[self.right_join_attribute] in self.dict1:
                     for j in self.dict1[num_list2[self.right_join_attribute]]:
                         str_tuple=j.tuple+' '+i.tuple
-                        atuple1=ATuple(str_tuple,None,Join)
+                        atuple1=ATuple(str_tuple,None,self)
                         result.append(atuple1)
+                        if self.track_prov:
+                            self.intermediate[atuple1.tuple]=[j,i]
             tuple1=self.right_input.get_next()
         return result
         pass
@@ -212,18 +230,41 @@ class Join(Operator):
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        answer_list=[]
+        for i in tuples:
+            left_list=[]
+            right_list=[]
+            for j in i:
+                left_tuple=self.intermediate[j.tuple][0]
+                left_list.append(self.left_input.lineage(left_tuple))
+                right_tuple=self.intermediate[j.tuple][1]
+                right_list.append(self.right_input.lineage(right_tuple))
+            answer_list.append(left_list+right_list)
+        return answer_list
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        ans_tuple=[]
+        op=0
+        for i in tuples:
+            if att_index>1:
+                ans_tuple.append(self.intermediate[i.tuple][1])
+                op=self.right_input
+            else:
+                ans_tuple.append(self.intermediate[i.tuple][0])
+                op=self.left_input
+        if att_index<2:
+            return op.where(att_index,ans_tuple)
+        else:
+            return op.where(att_index - 2,ans_tuple)
         pass
 
 # Project operator
 class Project(Operator):
     """Project operator.
-
     Attributes:
         input (Operator): A handle to the input.
         fields_to_keep (List(int)): A list of attribute indices to keep.
@@ -242,6 +283,7 @@ class Project(Operator):
         # YOUR CODE HERE
         self.input=input
         self.fields_to_keep=fields_to_keep
+        self.intermediate={}
         pass
 
     # Return next batch of projected tuples (or None if done)
@@ -258,7 +300,10 @@ class Project(Operator):
             for j in self.fields_to_keep:
                 str1+=att_list[j]
                 str1+=" "
-            return_list.append(ATuple(str1[0:-1],None,Project))
+            result=ATuple(str1[0:-1],None,self)
+            return_list.append(result)
+            if self.track_prov:
+                self.intermediate[result.tuple]=i
         return return_list
 
         pass
@@ -266,18 +311,33 @@ class Project(Operator):
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+
+        if not self.fields_to_keep:
+            return self.input.lineage(tuples) 
+        else:
+            ans_list=[]
+            for i in tuples:
+                ans_part_list=[]
+                for j in i:
+                    ans_part_list.append(self.intermediate[j.tuple])
+                ans_list.append(ans_part_list)
+
+            return self.input.lineage(ans_list)
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        ans_list=[]
+        for i in tuples:
+            ans_list.append(self.intermediate[i.tuple])
+        return self.input.where(self.fields_to_keep[att_index],ans_list)
         pass
 
 # Group-by operator
 class GroupBy(Operator):
     """Group-by operator.
-
     Attributes:
         input (Operator): A handle to the input
         key (int): The index of the key to group tuples.
@@ -298,7 +358,7 @@ class GroupBy(Operator):
         self.key=key
         self.value=value
         self.agg_fun=agg_fun
-
+        self.intermediate={}
         pass
 
     # Returns aggregated value per distinct key in the input (or None if done)
@@ -317,23 +377,33 @@ class GroupBy(Operator):
                 except KeyError:
                     input_list[tuple_list[self.key]]=[i]
         for j in input_list:
-            #logger.debug(input_list[j][0].tuple)
             real_tuple_list=input_list[j][0].tuple.split(" ")
             tuple1=real_tuple_list[self.key]+" "+str(self.agg_fun.AVG(input_list[j],self.value))
-            atuple1=ATuple(tuple1,None,GroupBy)
+            atuple1=ATuple(tuple1,None,self)
             output_list.append(atuple1)
+            if self.track_prov:
+                self.intermediate[atuple1.tuple]=input_list[j]
         return output_list
         pass
 
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        ans_list=[]
+        for i in tuples:
+            for j in i:
+                ans_list.append(self.intermediate[j.tuple])
+        return self.input.lineage(ans_list)
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        ans_list=[]
+        for i in tuples:
+            ans_list.extend(self.intermediate[i.tuple])
+        return self.input.where(self.value,ans_list)
         pass
 
 class AggFun:
@@ -341,7 +411,6 @@ class AggFun:
         pass
 
     def AVG(self, list, index):
-        #logger.debug(list)
         sum=0.0
         for i in list:
             tuple_list=i.tuple.split(" ")
@@ -353,7 +422,6 @@ class AggFun:
 # Custom histogram operator
 class Histogram(Operator):
     """Histogram operator.
-
     Attributes:
         input (Operator): A handle to the input
         key (int): The index of the key to group tuples. The operator outputs
@@ -395,7 +463,6 @@ class Histogram(Operator):
 # Order by operator
 class OrderBy(Operator):
     """OrderBy operator.
-
     Attributes:
         input (Operator): A handle to the input
         comparator (function): The user-defined comparator used for sorting the
@@ -427,19 +494,21 @@ class OrderBy(Operator):
             if not input1:
                 break
             for i in input1:
-                output_list.append(ATuple(i.tuple,None,OrderBy))
+                output_list.append(ATuple(i.tuple,None,self))
         return self.comparator.apply(output_list,self.ASC)
         pass
 
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        return self.input.lineage(tuples)
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        return self.input.where(att_index,tuples)
         pass
 
 class Comparator:
@@ -453,7 +522,6 @@ class Comparator:
 # Top-k operator
 class TopK(Operator):
     """TopK operator.
-
     Attributes:
         input (Operator): A handle to the input.
         k (int): The maximum number of tuples to output.
@@ -479,25 +547,26 @@ class TopK(Operator):
             return input1[0]
         output_list=[]
         for i in range(0,self.k):
-            output_list.append(input1[i])
+            output_list.append(ATuple(input1[i].tuple,None,self))
         return output_list
         pass
 
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        return self.input.lineage(tuples)
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        return self.input.where(att_index,tuples)
         pass
 
 # Filter operator
 class Select(Operator):
     """Select operator.
-
     Attributes:
         input (Operator): A handle to the input.
         predicate (function): The selection predicate.
@@ -552,13 +621,14 @@ if __name__ == "__main__":
     # YOUR CODE HERE
     if sys.argv[2]=="1":
         filter_friend=Filter(sys.argv[8],0)
-        scan_friends=Scan(sys.argv[4],filter_friend,False,False)
+        scan_friends=Scan(sys.argv[4],filter_friend,True,False)
         filter_movie=Filter(sys.argv[10],1)
-        scan_movies=Scan(sys.argv[6],filter_movie,False,False)
-        join_opt=Join(scan_friends,scan_movies,1,0,False,False)
+        scan_movies=Scan(sys.argv[6],filter_movie,True,False)
+        join_opt=Join(scan_friends,scan_movies,1,0,True,False)
         average=AggFun()
         #projection=Project(join_opt,[4],False,False)
-        ans1=average.AVG(join_opt.get_next(),4)
+        tuples=join_opt.get_next()
+        ans1=average.AVG(tuples,4)
         logger.info(ans1)
 
     # TASK 2: Implement recommendation query for User A
@@ -574,18 +644,18 @@ if __name__ == "__main__":
 
     # YOUR CODE HERE
     if sys.argv[2]=="2":
-        filter_friend=Filter(sys.argv[8],0)
-        scan_friends=Scan(sys.argv[4],filter_friend,False,False)
-        scan_movies=Scan(sys.argv[6],None,False,False)
-        join_opt=Join(scan_friends,scan_movies,1,0,False,False)
-        projection_pre=Project(join_opt,[3,4],False,False)
-        average=AggFun()
-        group_by_opt=GroupBy(projection_pre,0,1,average,False,False)
-        compare_opt=Comparator(1)
-        order_by_opt=OrderBy(group_by_opt,compare_opt,False,False,False)
-        top_k_opt=TopK(order_by_opt,1,False,False)
-        projection=Project(top_k_opt,[0],False,False)
-        ans2=projection.get_next()[0]
+        filter_friend2=Filter(sys.argv[8],0)
+        scan_friends2=Scan(sys.argv[4],filter_friend2,True,False)
+        scan_movies2=Scan(sys.argv[6],None,True,False)
+        join_opt2=Join(scan_friends2,scan_movies2,1,0,True,False)
+        #projection_pre2=Project(join_opt2,[3,4],True,False)
+        average2=AggFun()
+        group_by_opt2=GroupBy(join_opt2,3,4,average2,True,False)
+        compare_opt2=Comparator(1)
+        order_by_opt2=OrderBy(group_by_opt2,compare_opt2,False,True,False)
+        top_k_opt2=TopK(order_by_opt2,1,True,False)
+        projection2=Project(top_k_opt2,[0],True,False)
+        ans2=projection2.get_next()[0]
         logger.info(int(ans2.tuple))
 
     # TASK 3: Implement explanation query for User A and Movie M
@@ -619,16 +689,34 @@ if __name__ == "__main__":
     # TASK 1: Implement lineage query for movie recommendation
 
     # YOUR CODE HERE
-
+    if sys.argv[2]=="2":
+        ans2_lineage_list=ans2.lineage()
+        ans_tuple_list=[]
+        if(len(ans2_lineage_list)==1):
+            for i in ans2_lineage_list:
+                for j in i:
+                    ans_tuple_list.append(j.tuple)
+        else:
+            part=[]
+            for i in ans2_lineage_list:
+                for j in i:
+                    part.append(j.tuple)
+                ans_tuple_list.append(part)
+        logger.info(ans_tuple_list)
 
     # TASK 2: Implement where-provenance query for 'likeness' prediction
 
     # YOUR CODE HERE
+    if sys.argv[2]=="1":
+        as2_tsk2=join_opt.where(4,tuples)
+        logger.info(as2_tsk2)
 
 
     # TASK 3: Implement how-provenance query for movie recommendation
 
     # YOUR CODE HERE
+    if sys.argv[2]=="2":
+        ans2.how()
 
 
     # TASK 4: Retrieve most responsible tuples for movie recommendation
