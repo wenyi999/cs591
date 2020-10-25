@@ -50,7 +50,7 @@ class ATuple:
     # Returns the How-provenance of self
     def how() -> string:
         # YOUR CODE HERE (ONLY FOR TASK 3 IN ASSIGNMENT 2)
-
+        return self.metadata
         pass
 
     # Returns the input tuples with responsibility \rho >= 0.5 (if any)
@@ -716,9 +716,13 @@ if __name__ == "__main__":
 
     # YOUR CODE HERE
     if sys.argv[2]=="2":
-        ans2.how()
-
-
+        half_len=int(len(ans_tuple_list)/2)
+        as2_tsk3=""
+        for i in range(half_len):
+            one_pair="(f"+str(scan_friends2.intermediate[ans_tuple_list[i]])+"*r"+str(scan_movies2.intermediate[ans_tuple_list[i+half_len]])+"@"+ans_tuple_list[i+half_len].split(" ")[2]+"), "
+            as2_tsk3=as2_tsk3+one_pair
+        as2_tsk3="AVG( "+as2_tsk3[0:len(as2_tsk3)-2]+" )"
+        logger.info(as2_tsk3)
     # TASK 4: Retrieve most responsible tuples for movie recommendation
 
     # YOUR CODE HERE
