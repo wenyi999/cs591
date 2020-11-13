@@ -127,7 +127,7 @@ class Scan(Operator):
             while len(AT_list)<5:
                 headers = next(self.f_csv)
                 self.linenum+=1;
-                tuple1=headers[0]
+                tuple1=",".join(headers)
                 if self.filter:
                     if not self.filter.apply(tuple1):
                         continue
@@ -631,6 +631,72 @@ class Predicate:
   # Returns true if tuple passes the filter, false otherwise
     def apply(self, tuple):
         return tuple[self.att] == self.uid 
+
+class Distinct(Operator):
+    def __init__(self, input, fields_to_compare=0, track_prov=False,
+                                                    propagate_prov=False):
+        self.input=input
+        self.fields_to_compare=fields_to_compare
+
+    def get_next(self):
+        ans={}
+        while True:
+            input_tuple=self.input.get_next()
+            if not input_tuple:
+                break
+            for i in input_tuple:
+                #logger.info(i.tuple)
+                input_tuple_list=i.tuple.split(",")
+                #logger.info(input_tuple_list)
+                key=input_tuple_list[self.fields_to_compare]
+                if key=="":
+                    key="empty"
+                if key=="Mozilla" or key=="Mozilla Firefox":
+                    key="Firefox"
+                if key=="Internet Explorer" or key == "InternetExplorer":
+                    key="IE"
+                if key=="Google Chrome":
+                    key="Chrome"
+                if(key in ans):
+                    ans[key]+=1
+                else:
+                    ans[key]=1
+        return ans
+
+class Map(Operator):
+    def __init__(self, input, keys, track_prov=False, propagate_prov=False):
+        self.input=input
+        self.keys=keys
+    def get_next(self):
+        ans=[]
+        while True:
+            tuple_list=self.input.get_next()
+            if not tuple_list:
+                break
+            for i in tuple_list:
+                att_list=i.tuple.split(",")
+                for j in range(0,len(att_list)):
+                    if not att_list[j]:
+                        att_list[j]="0"
+                    elif j==1:
+                        time_list=att_list[j].split(" ")
+                        date_list=time_list[0].split("-")
+                        hour_list=time_list[1].split(":")
+                        string_wanted="-".join(date_list[1:3])+" "+":".join(hour_list[0:2])
+                        att_list[j]=string_wanted
+                    elif j in [6,7,8]:
+                        name_string=att_list[j]
+                        if name_string=="Mozilla" or name_string=="Mozilla Firefox":
+                            name_string="Firefox"
+                        if name_string=="Internet Explorer" or name_string == "InternetExplorer":
+                            name_string="IE"
+                        if name_string=="Google Chrome":
+                            name_string="Chrome"
+                        att_list[j]=self.keys[name_string]
+                i=",".join(att_list[1:10])
+                ans.append(i)
+        return ans;
+
 
 if __name__ == "__main__":
 
