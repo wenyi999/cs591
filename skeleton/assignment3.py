@@ -2,6 +2,9 @@ from PythonApplication1 import Scan,Distinct,Map
 from random import randint
 import logging
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+import lightgbm as lgb
+import numpy
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
@@ -42,8 +45,24 @@ if __name__ == "__main__":
                 i[j]=int(i[j])
             x.append(i[0:len(i)-1])
             y.append(i[len(i)-1])
-        x_train, x_test, y_train, y_test = train_test_split(
-    x, y, test_size=0.30, random_state=42)
-        #logger.info(x_train[0])
+        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.30, random_state=42)
+        '''train_data = lgb.Dataset(data=x_train,label=y_train)
+        test_data = lgb.Dataset(data=x_test,label=y_test)
+        param = {'num_leaves': 31, 'num_trees':100, 'objective': 'binary'}
+        param['metric'] = 'auc'
+        num_round = 10
+        bst = lgb.train(param, train_data, num_round, valid_sets=[test_data])
+        bst.save_model('model.txt')'''
+        
+        x_train_array=numpy.array(x_train)
+        x_test_array=numpy.array(x_test)
+        y_train_array=numpy.array(y_train)
+        y_test_array=numpy.array(y_test)
+        params = {"n_jobs": 4, "n_estimators": 50,  "max_depth": 3}
+        lgbm = lgb.LGBMClassifier(**params)
+        lgbm.fit(x_train_array, y_train_array, eval_set=[(x_test_array, y_test_array)], eval_metric='auc')
+        y_test_pred = lgbm.predict(x_test_array)
+        report=classification_report(y_test_array, y_test_pred,target_names=None)
+        logger.info(report)
 
 
