@@ -33,4 +33,5 @@ if __name__ == "__main__":
         scan_data=Scan('../data/sample.csv',None,False,False)
         map_data=Map(scan_data,keys)
         data_ETL=map_data.get_next()
+        logger.info("An example of the data after the ETL:")
         logger.info(data_ETL[0])
