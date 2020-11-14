@@ -13,6 +13,9 @@ import lime.lime_tabular
 import tkinter
 import matplotlib
 
+#import xgboost
+import shap
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
@@ -85,19 +88,22 @@ if __name__ == "__main__":
         logger.info(sklearn.metrics.accuracy_score(y_test_array, lgbm.predict(x_test_array)))
         feature_names=["month","day","hour","minute","siteid","offerid","category","merchant","countrycode","browserid","devid","click"]
         target_names=["not click","click"]
-        explainer = lime.lime_tabular.LimeTabularExplainer(x_train_array, "classification",y_train_array,feature_names,categorical_features=None, categorical_names=None, kernel_width=None, verbose=False, class_names= target_names, feature_selection='auto', discretize_continuous=False)
-        exp = explainer.explain_instance(x2_array[0], lgbm.predict_proba, num_features=11)#, top_labels=1)
-        exp.show_in_notebook(show_table=True, show_all=False)
-        exp.as_pyplot_figure()
-        exp = explainer.explain_instance(x2_array[1], lgbm.predict_proba, num_features=11, top_labels=1)
-        exp.show_in_notebook(show_table=True, show_all=False)
+        explainer1 = lime.lime_tabular.LimeTabularExplainer(x_train_array, "classification",y_train_array,feature_names[0:11],categorical_features=None, categorical_names=None, kernel_width=None, verbose=False, class_names= target_names, feature_selection='auto', discretize_continuous=False)
+        exp1 = explainer1.explain_instance(x2_array[0], lgbm.predict_proba, num_features=11, top_labels=1)
+        exp1.show_in_notebook(show_table=True, show_all=False)
         #exp.as_pyplot_figure()
-
+        exp2 = explainer1.explain_instance(x2_array[1], lgbm.predict_proba, num_features=11, top_labels=1)
+        exp2.show_in_notebook(show_table=True, show_all=False)
+        
         shap.initjs()
-        explainer = shap.TreeExplainer(lgbm)
-        shap_values = explainer.shap_values(x2_array)
-        shap.force_plot(explainer.expected_value[0], numpy.array(shap_values)[0][0,:], (x2_array)[0,:],feature_names[0:11])#
-        shap.force_plot(explainer.expected_value[0], numpy.array(shap_values)[1][0,:], (x2_array)[1,:],feature_names[0:11])#
+        explainer2 = shap.TreeExplainer(lgbm)
+        shap_values = explainer2.shap_values(x2_array)
+        shap.force_plot(explainer2.expected_value[0], numpy.array(shap_values)[0][0,:], (x2_array)[0,:],feature_names[0:11])#
+        shap.force_plot(explainer2.expected_value[0], numpy.array(shap_values)[1][0,:], (x2_array)[1,:],feature_names[0:11])#
+
+        from lime import submodular_pick
+        sp_obj = submodular_pick.SubmodularPick(explainer1, x_train_array, lgbm.predict_proba, sample_size=20, num_features=11, num_exps_desired=10)
+        [exp.show_in_notebook(show_table=True, show_all=False) for exp in sp_obj.sp_explanations];
 
 
 
