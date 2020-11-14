@@ -89,6 +89,7 @@ if __name__ == "__main__":
         y2_array=numpy.array(y2)
 
         #subtask 1
+        logger.info("the accurary score of this model is:")
         logger.info(sklearn.metrics.accuracy_score(y_test_array, lgbm.predict(x_test_array)))
         feature_names=["month","day","hour","minute","siteid","offerid","category","merchant","countrycode","browserid","devid","click"]
         target_names=["not click","click"]
