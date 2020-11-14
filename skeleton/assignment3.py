@@ -85,6 +85,7 @@ if __name__ == "__main__":
         x2_array=numpy.array(x2)
         y2_array=numpy.array(y2)
 
+        #subtask 1
         logger.info(sklearn.metrics.accuracy_score(y_test_array, lgbm.predict(x_test_array)))
         feature_names=["month","day","hour","minute","siteid","offerid","category","merchant","countrycode","browserid","devid","click"]
         target_names=["not click","click"]
@@ -94,16 +95,22 @@ if __name__ == "__main__":
         #exp.as_pyplot_figure()
         exp2 = explainer1.explain_instance(x2_array[1], lgbm.predict_proba, num_features=11, top_labels=1)
         exp2.show_in_notebook(show_table=True, show_all=False)
-        
+
+        #subtask 2
         shap.initjs()
         explainer2 = shap.TreeExplainer(lgbm)
         shap_values = explainer2.shap_values(x2_array)
         shap.force_plot(explainer2.expected_value[0], numpy.array(shap_values)[0][0,:], (x2_array)[0,:],feature_names[0:11])#
         shap.force_plot(explainer2.expected_value[0], numpy.array(shap_values)[1][0,:], (x2_array)[1,:],feature_names[0:11])#
 
+        #subtask 3
         from lime import submodular_pick
         sp_obj = submodular_pick.SubmodularPick(explainer1, x_train_array, lgbm.predict_proba, sample_size=20, num_features=11, num_exps_desired=10)
         [exp.show_in_notebook(show_table=True, show_all=False) for exp in sp_obj.sp_explanations];
+        
+        #subtask 4
+        shap_values = explainer2.shap_values(x_train_array,y_train_array)
+        shap.summary_plot(numpy.array(shap_values)[0], x_train_array,feature_names = feature_names)
 
 
 
