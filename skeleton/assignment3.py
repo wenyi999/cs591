@@ -22,6 +22,7 @@ logging.basicConfig(level=logging.DEBUG)
 matplotlib.use('TkAgg')
 
 if __name__ == "__main__":
+        #task 1
         ans_list=[]
         att_list=["ID","datetime","siteid","offerid","category","merchant","countrycode","browserid","devid","click"]
         for i in range(0,10):
@@ -36,6 +37,8 @@ if __name__ == "__main__":
                 logger.info("The distinct values for attribute "+att_list[i]+" are shown below,")
                 logger.info(ans)
                 ans_list.append(ans)
+        
+        #task 2
         keys={}
         for i in ans_list:
             index=1
@@ -49,9 +52,6 @@ if __name__ == "__main__":
         scan_data=Scan('../data/sample.csv',None,False,False)
         map_data=Map(scan_data,keys)
         data_ETL=map_data.get_next()
-        logger.info(data_ETL[0])
-
-        #task 3
         x=[]
         y=[]
         for i in data_ETL:
@@ -59,6 +59,9 @@ if __name__ == "__main__":
                 i[j]=int(i[j])
             x.append(i[0:len(i)-1])
             y.append(i[len(i)-1])
+        logger.info(data_ETL[0])
+
+        #task 3
         x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.30, random_state=42)        
         x_train_array=numpy.array(x_train)
         x_test_array=numpy.array(x_test)
