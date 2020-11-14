@@ -677,15 +677,18 @@ class Map(Operator):
                 att_list=i.tuple.split(",")
                 for j in range(0,len(att_list)+3):
                     if not att_list[j]:
-                        att_list[j]=0
-                    elif j==1:
+                        att_list[j]="0"
+                    if j==1:
                         time_list=att_list[j].split(" ")
                         date_list=time_list[0].split("-")
                         hour_list=time_list[1].split(":")
                         new_att=date_list[1:3]+(hour_list[0:2])
                         att_list=att_list[0:1]+new_att+att_list[2:len(att_list)]
-                    elif j in [9,10,11]:
+                    if j in [9,10,11]:
                         name_string=att_list[j]
+                        #logger.info(name_string)
+                        if name_string=="0" or 0 or '0':
+                            name_string="empty"
                         if name_string=="Mozilla" or name_string=="Mozilla Firefox":
                             name_string="Firefox"
                         if name_string=="Internet Explorer" or name_string == "InternetExplorer":

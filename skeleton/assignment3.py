@@ -1,13 +1,22 @@
-from PythonApplication1 import Scan,Distinct,Map
+from assignment_12 import Scan,Distinct,Map
 from random import randint
 import logging
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import lightgbm as lgb
 import numpy
+import sklearn
+import sklearn.datasets
+import sklearn.ensemble
+import lime
+import lime.lime_tabular
+import tkinter
+import matplotlib
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
+
+matplotlib.use('TkAgg')
 
 if __name__ == "__main__":
         ans_list=[]
@@ -38,6 +47,8 @@ if __name__ == "__main__":
         map_data=Map(scan_data,keys)
         data_ETL=map_data.get_next()
         logger.info(data_ETL[0])
+
+        #task 3
         x=[]
         y=[]
         for i in data_ETL:
@@ -45,15 +56,7 @@ if __name__ == "__main__":
                 i[j]=int(i[j])
             x.append(i[0:len(i)-1])
             y.append(i[len(i)-1])
-        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.30, random_state=42)
-        '''train_data = lgb.Dataset(data=x_train,label=y_train)
-        test_data = lgb.Dataset(data=x_test,label=y_test)
-        param = {'num_leaves': 31, 'num_trees':100, 'objective': 'binary'}
-        param['metric'] = 'auc'
-        num_round = 10
-        bst = lgb.train(param, train_data, num_round, valid_sets=[test_data])
-        bst.save_model('model.txt')'''
-        
+        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.30, random_state=42)        
         x_train_array=numpy.array(x_train)
         x_test_array=numpy.array(x_test)
         y_train_array=numpy.array(y_train)
@@ -63,6 +66,34 @@ if __name__ == "__main__":
         lgbm.fit(x_train_array, y_train_array, eval_set=[(x_test_array, y_test_array)], eval_metric='auc')
         y_test_pred = lgbm.predict(x_test_array)
         report=classification_report(y_test_array, y_test_pred,target_names=None)
-        logger.info(report)
+        logger.info("\n"+report)
+
+        #task 4
+        scan2=Scan('../data/sample_for_task4.csv',None,False,False)
+        map2=Map(scan2,keys)
+        data2=map2.get_next()
+        x2=[]
+        y2=[]
+        for i in data2:
+            for j in range(0,len(i)):
+                i[j]=int(i[j])
+            x2.append(i[0:len(i)-1])
+            y2.append(i[len(i)-1])
+        x2_array=numpy.array(x2)
+        y2_array=numpy.array(y2)
+
+        logger.info(sklearn.metrics.accuracy_score(y_test_array, lgbm.predict(x_test_array)))
+        feature_names=["month","day","hour","minute","siteid","offerid","category","merchant","countrycode","browserid","devid","click"]
+        target_names=["not click","click"]
+        explainer = lime.lime_tabular.LimeTabularExplainer(x_train_array, "classification",y_train_array,feature_names,categorical_features=None, categorical_names=None, kernel_width=None, verbose=False, class_names= target_names, feature_selection='auto', discretize_continuous=False)
+        exp = explainer.explain_instance(x2_array[0], lgbm.predict_proba, num_features=11)#, top_labels=1)
+        exp.show_in_notebook(show_table=True, show_all=False)
+        exp.as_pyplot_figure()
+        exp = explainer.explain_instance(x2_array[1], lgbm.predict_proba, num_features=11, top_labels=1)
+        exp.show_in_notebook(show_table=True, show_all=False)
+        #exp.as_pyplot_figure()
+
+
+
 
 
