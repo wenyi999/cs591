@@ -86,9 +86,9 @@ if __name__ == "__main__":
         feature_names=["month","day","hour","minute","siteid","offerid","category","merchant","countrycode","browserid","devid","click"]
         target_names=["not click","click"]
         explainer = lime.lime_tabular.LimeTabularExplainer(x_train_array, "classification",y_train_array,feature_names,categorical_features=None, categorical_names=None, kernel_width=None, verbose=False, class_names= target_names, feature_selection='auto', discretize_continuous=False)
-        exp = explainer.explain_instance(x2_array[0], lgbm.predict_proba, num_features=11)#, top_labels=1)
+        exp = explainer.explain_instance(x2_array[0], lgbm.predict_proba, num_features=11, top_labels=1)
         exp.show_in_notebook(show_table=True, show_all=False)
-        exp.as_pyplot_figure()
+        #exp.as_pyplot_figure()
         exp = explainer.explain_instance(x2_array[1], lgbm.predict_proba, num_features=11, top_labels=1)
         exp.show_in_notebook(show_table=True, show_all=False)
         #exp.as_pyplot_figure()
