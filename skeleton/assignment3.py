@@ -115,6 +115,9 @@ if __name__ == "__main__":
         #subtask 4
         shap_values = explainer2.shap_values(x_train_array,y_train_array)
         shap.summary_plot(numpy.array(shap_values)[0], x_train_array,feature_names = feature_names)
+        shap_values = explainer2.shap_values(x_test_array,y_test_array)
+        shap.summary_plot(numpy.array(shap_values)[0], x_test_array,feature_names = feature_names)
+
 
 
 
