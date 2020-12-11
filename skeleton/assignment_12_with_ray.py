@@ -1,4 +1,3 @@
-
 from __future__ import absolute_import
 from __future__ import annotations
 from __future__ import division
@@ -10,9 +9,28 @@ from typing import List, Tuple
 import uuid
 import sys
 
+import logging
+from jaeger_client import Config
+
 import ray
 ray.init()
+def init_tracer(service):
+    logging.getLogger('').handlers = []
+    logging.basicConfig(format='%(message)s', level=logging.DEBUG)
 
+    config = Config(
+        config={
+            'sampler': {
+                'type': 'const',
+                'param': 1,
+            },
+            'logging': True,
+        },
+        service_name=service,
+    )
+
+    # this call also sets opentracing.tracer
+    return config.initialize_tracer()
 # Note (john): Make sure you use Python's logger to log
 #              information about your program
 logger = logging.getLogger(__name__)
@@ -26,7 +44,6 @@ def _generate_uuid():
 # Custom tuple class with optional metadata
 class ATuple:
     """Custom tuple.
-
     Attributes:
         tuple (Tuple): The actual tuple.
         metadata (string): The tuple metadata (e.g. provenance annotations).
@@ -38,29 +55,34 @@ class ATuple:
         self.operator = operator
 
     # Returns the lineage of self
-    def lineage() -> List[ATuple]:
+    def lineage(self) -> List[ATuple]:
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        temp=[[ATuple(self.tuple,self.metadata,self.operator)]]
+        return self.operator.lineage(temp)
         pass
 
     # Returns the Where-provenance of the attribute at index 'att_index' of self
     def where(att_index) -> List[Tuple]:
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        return self.operator.where(att_index,self)
         pass
 
     # Returns the How-provenance of self
-    def how() -> string:
+    def how(self) -> string:
         # YOUR CODE HERE (ONLY FOR TASK 3 IN ASSIGNMENT 2)
+        return self.metadata
         pass
 
     # Returns the input tuples with responsibility \rho >= 0.5 (if any)
     def responsible_inputs() -> List[Tuple]:
         # YOUR CODE HERE (ONLY FOR TASK 4 IN ASSIGNMENT 2)
         pass
+    #def __eq__(self, value):
+     #   return self.tuple==value.tuple and self.metadata==value.metadata and self.operator==value.operator
 
 # Data operator
 class Operator:
     """Data operator (parent class).
-
     Attributes:
         id (string): Unique operator ID.
         name (string): Operator name.
@@ -94,7 +116,6 @@ class Operator:
 @ray.remote
 class Scan(Operator):
     """Scan operator.
-
     Attributes:
         filepath (string): The path to the input file.
         filter (function): An optional user-defined filter.
@@ -106,7 +127,7 @@ class Scan(Operator):
     # Initializes scan operator
     def __init__(self, filepath, filter=None, track_prov=False,
                                               propagate_prov=False):
-        Operator.__init__(self,name="Scan", track_prov=track_prov,
+        Operator(Join, self).__init__(self,name="Scan", track_prov=track_prov,
                                    propagate_prov=propagate_prov)
         # YOUR CODE HERE
         self.filepath=filepath
@@ -115,35 +136,56 @@ class Scan(Operator):
         #self.propagate_prov=propagate_prov
         f=open(self.filepath)
         self.f_csv = csv.reader(f)
+        self.intermediate={}
+        self.linenum=0
         pass
 
     # Returns next batch of tuples in given file (or None if file exhausted)
     def get_next(self):
-        # YOUR CODE HERE
-        AT_list=[]
-        try:
-            while len(AT_list)<5:
-                headers = next(self.f_csv)
-                tuple1=headers[0]
-                if self.filter:
-                    if not self.filter.apply.remote(tuple1):
-                        continue
-                atuple=ATuple(tuple1,None,Scan)
-                AT_list.append(atuple)
-        except StopIteration:
-            return AT_list
+        with tracer.start_span("Scan", child_of=span) as operator_span:
+            # YOUR CODE HERE
+            AT_list=[]
+            try:
+                while len(AT_list)<5:
+                    headers = next(self.f_csv)
+                    self.linenum+=1;
+                    tuple1=",".join(headers)
+                    if self.filter:
+                        if not self.filter.apply(tuple1):
+                            continue
+                    if self.propagate_prov:
+                        if self.filepath=="../data/friends.txt":
+                            atuple1=ATuple(tuple1,"f"+str(self.linenum),self)
+                        else:
+                            atuple1=ATuple(tuple1,"r"+str(self.linenum),self)
+                    else:
+                        atuple1=ATuple(tuple1,None,self)
+                    if self.track_prov:
+                        self.intermediate[tuple1]=self.linenum
+                    AT_list.append(atuple1)
+            except StopIteration:
+                return AT_list
         return AT_list
         pass
 
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        return tuples
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        ans_list=[]
+        for i in tuples:
+            tuple1=i.tuple
+            tuple1_list=tuple1.split(" ")
+            att_value=tuple1_list[att_index]
+            ans_tuple=(self.filepath,self.intermediate[tuple1],tuple1,att_value)
+            ans_list.append(ans_tuple)
+        return ans_list
         pass
 
 @ray.remote
@@ -159,7 +201,6 @@ class Filter:
 @ray.remote
 class Join(Operator):
     """Equi-join operator.
-
     Attributes:
         left_input (Operator): A handle to the left input.
         right_input (Operator): A handle to the left input.
@@ -175,8 +216,7 @@ class Join(Operator):
                                                 right_join_attribute,
                                                 track_prov=False,
                                                 propagate_prov=False):
-        #super(Join.init, self)
-        Operator.__init__(self,name="Join", track_prov=track_prov,
+        Operator(Join, self).__init__(name="Join", track_prov=track_prov,
                                    propagate_prov=propagate_prov)
         # YOUR CODE HERE
         self.left_input=left_input
@@ -184,16 +224,15 @@ class Join(Operator):
         self.left_join_attribute=left_join_attribute
         self.right_join_attribute=right_join_attribute
         self.dict1={}
+        self.intermediate={}
         left_result="0"
         i=1
         while(len(left_result)==5 or i==1):
             i=0
             left_future=left_input.get_next.remote();
             left_result=ray.get(left_future)#left_input.get_next()
-            #left_result=left_input.get_next()
             for i in left_result:
-                #logger.debug(i.tuple)
-                num_list=i.tuple.split(" ")
+                num_list=i.tuple.split(' ')
                 try:
                     self.dict1[num_list[left_join_attribute]].append(i)
                 except KeyError:
@@ -203,38 +242,66 @@ class Join(Operator):
     # Returns next batch of joined tuples (or None if done)
     def get_next(self):
         # YOUR CODE HERE
-        result=[]
-        right_future=self.right_input.get_next.remote();
-        tuple1=ray.get(right_future)#self.right_input.get_next()
-        while len(tuple1)==5:
-            for i in tuple1:
-                num_list2=i.tuple.split(" ")
-                if num_list2[self.right_join_attribute] in self.dict1:
-                    for j in self.dict1[num_list2[self.right_join_attribute]]:
-                        str_tuple=(j.tuple+" "+i.tuple)
-                        atuple1=ATuple(str_tuple,None,Join)
-                        result.append(atuple1)
+        with tracer.start_span("Join", child_of=span) as operator_span:
+            result=[]
             right_future=self.right_input.get_next.remote();
             tuple1=ray.get(right_future)#self.right_input.get_next()
+            while len(tuple1)==5:
+                for i in tuple1:
+                    num_list2=i.tuple.split(' ')
+                    if num_list2[self.right_join_attribute] in self.dict1:
+                        for j in self.dict1[num_list2[self.right_join_attribute]]:
+                            str_tuple=j.tuple+' '+i.tuple
+                            if self.propagate_prov:
+                                atuple1=ATuple(str_tuple,j.metadata+"*"+i.metadata,self)
+                            else:
+                                atuple1=ATuple(str_tuple,None,self)
+                            result.append(atuple1)
+                            if self.track_prov:
+                                self.intermediate[atuple1.tuple]=[j,i]
+                tuple1=self.right_input.get_next()
         return result
         pass
 
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        answer_list=[]
+        for i in tuples:
+            left_list=[]
+            right_list=[]
+            for j in i:
+                left_tuple=self.intermediate[j.tuple][0]
+                left_list.append(self.left_input.lineage(left_tuple))
+                right_tuple=self.intermediate[j.tuple][1]
+                right_list.append(self.right_input.lineage(right_tuple))
+            answer_list.append(left_list+right_list)
+        return answer_list
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        ans_tuple=[]
+        op=0
+        for i in tuples:
+            if att_index>1:
+                ans_tuple.append(self.intermediate[i.tuple][1])
+                op=self.right_input
+            else:
+                ans_tuple.append(self.intermediate[i.tuple][0])
+                op=self.left_input
+        if att_index<2:
+            return op.where(att_index,ans_tuple)
+        else:
+            return op.where(att_index - 2,ans_tuple)
         pass
 
 # Project operator
 @ray.remote
 class Project(Operator):
     """Project operator.
-
     Attributes:
         input (Operator): A handle to the input.
         fields_to_keep (List(int)): A list of attribute indices to keep.
@@ -248,29 +315,38 @@ class Project(Operator):
     # Initializes project operator
     def __init__(self, input, fields_to_keep=[], track_prov=False,
                                                  propagate_prov=False):
-        Operator.__init__(self,name="Project", track_prov=track_prov,
+        Operator(Project, self).__init__(name="Project", track_prov=track_prov,
                                       propagate_prov=propagate_prov)
         # YOUR CODE HERE
         self.input=input
         self.fields_to_keep=fields_to_keep
+        self.intermediate={}
         pass
 
     # Return next batch of projected tuples (or None if done)
     def get_next(self):
         # YOUR CODE HERE
-        future=self.input.get_next.remote();
-        tuple_list=ray.get(future)#self.input.get_next()
-        return_list=[]
-        if not self.fields_to_keep:
-            return tuple_list
-        for i in tuple_list:
-            origin_tuple=i.tuple
-            att_list=origin_tuple.split(" ")
-            str1=""
-            for j in self.fields_to_keep:
-                str1+=att_list[j]
-                str1+=" "
-            return_list.append(ATuple(str1[0:-1],None,Project))
+        with tracer.start_span("Project", child_of=span) as operator_span:
+
+            future=self.input.get_next.remote();
+            tuple_list=ray.get(future)#self.input.get_next()
+            return_list=[]
+            if not self.fields_to_keep:
+                return tuple_list
+            for i in tuple_list:
+                origin_tuple=i.tuple
+                att_list=origin_tuple.split(" ")
+                str1=""
+                for j in self.fields_to_keep:
+                    str1+=att_list[j]
+                    str1+=" "
+                if self.propagate_prov:
+                    result=ATuple(str1[0:-1],i.metadata,self)
+                else:
+                    result=ATuple(str1[0:-1],None,self)
+                return_list.append(result)
+                if self.track_prov:
+                    self.intermediate[result.tuple]=i
         return return_list
 
         pass
@@ -278,19 +354,34 @@ class Project(Operator):
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+
+        if not self.fields_to_keep:
+            return self.input.lineage(tuples) 
+        else:
+            ans_list=[]
+            for i in tuples:
+                ans_part_list=[]
+                for j in i:
+                    ans_part_list.append(self.intermediate[j.tuple])
+                ans_list.append(ans_part_list)
+
+            return self.input.lineage(ans_list)
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        ans_list=[]
+        for i in tuples:
+            ans_list.append(self.intermediate[i.tuple])
+        return self.input.where(self.fields_to_keep[att_index],ans_list)
         pass
 
 # Group-by operator
 @ray.remote
 class GroupBy(Operator):
     """Group-by operator.
-
     Attributes:
         input (Operator): A handle to the input
         key (int): The index of the key to group tuples.
@@ -304,50 +395,70 @@ class GroupBy(Operator):
     # Initializes average operator
     def __init__(self, input, key, value, agg_fun, track_prov=False,
                                                    propagate_prov=False):
-        Operator.__init__(self,name="GroupBy", track_prov=track_prov,
+        Operator(GroupBy, self).__init__(name="GroupBy", track_prov=track_prov,
                                       propagate_prov=propagate_prov)
         # YOUR CODE HERE
         self.input=input
         self.key=key
         self.value=value
         self.agg_fun=agg_fun
-
+        self.intermediate={}
         pass
 
     # Returns aggregated value per distinct key in the input (or None if done)
     def get_next(self):
         # YOUR CODE HERE
-        input_list={}
-        output_list=[]
-        while True :
-            future=self.input.get_next.remote();
-            input1=ray.get(future)#self.input.get_next()
-            if not input1:
-                break
-            for i in input1:
-                tuple_list=i.tuple.split(" ")
-                try:
-                    input_list[tuple_list[self.key]].append(i)
-                except KeyError:
-                    input_list[tuple_list[self.key]]=[i]
-        for j in input_list:
-            #logger.debug(input_list[j][0].tuple)
-            real_tuple_list=input_list[j][0].tuple.split(" ")
-            tuple1=real_tuple_list[self.key]+" "+str(self.agg_fun.AVG(input_list[j],self.value))
-            atuple1=ATuple(tuple1,None,GroupBy)
-            output_list.append(atuple1)
+        with tracer.start_span("GroupBy", child_of=span) as operator_span:
+
+            input_list={}
+            output_list=[]
+            while True :
+                future=self.input.get_next.remote();
+                input1=ray.get(future)#self.input.get_next()
+                if not input1:
+                    break
+                for i in input1:
+                    tuple_list=i.tuple.split(" ")
+                    try:
+                        input_list[tuple_list[self.key]].append(i)
+                    except KeyError:
+                        input_list[tuple_list[self.key]]=[i]
+            for j in input_list:
+                real_tuple_list=input_list[j][0].tuple.split(" ")
+                tuple1=real_tuple_list[self.key]+" "+str(self.agg_fun.AVG(input_list[j],self.value))
+                if self.propagate_prov:
+                    metadata_str=""
+                    for k in input_list[j]:
+                        k_list=k.tuple.split(" ")
+                        metadata_str=metadata_str+" ("+k.metadata+"@"+k_list[self.value]+"),"
+
+                    atuple1=ATuple(tuple1,"AVG("+metadata_str[:-1]+" )",self)
+                else:
+                    atuple1=ATuple(tuple1,None,self)
+                output_list.append(atuple1)
+                if self.track_prov:
+                    self.intermediate[atuple1.tuple]=input_list[j]
         return output_list
         pass
 
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        ans_list=[]
+        for i in tuples:
+            for j in i:
+                ans_list.append(self.intermediate[j.tuple])
+        return self.input.lineage(ans_list)
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        ans_list=[]
+        for i in tuples:
+            ans_list.extend(self.intermediate[i.tuple])
+        return self.input.where(self.value,ans_list)
         pass
 
 @ray.remote
@@ -356,7 +467,6 @@ class AggFun:
         pass
 
     def AVG(self, list, index):
-        #logger.debug(list)
         sum=0.0
         for i in list:
             tuple_list=i.tuple.split(" ")
@@ -369,7 +479,6 @@ class AggFun:
 @ray.remote
 class Histogram(Operator):
     """Histogram operator.
-
     Attributes:
         input (Operator): A handle to the input
         key (int): The index of the key to group tuples. The operator outputs
@@ -381,7 +490,7 @@ class Histogram(Operator):
     """
     # Initializes histogram operator
     def __init__(self, input, key=0, track_prov=False, propagate_prov=False):
-        Operator.__init__(self,name="Histogram",
+        Operator(Histogram, self).__init__(name="Histogram",
                                         track_prov=track_prov,
                                         propagate_prov=propagate_prov)
         # YOUR CODE HERE
@@ -392,20 +501,22 @@ class Histogram(Operator):
     # Returns histogram (or None if done)
     def get_next(self):
         # YOUR CODE HERE
-        output_list={}
-        while True:
-            future=self.input.get_next.remote();
-            input1=ray.get(future)#self.input.get_next()
-            if not input1:
-                break
-            for i in input1:
-                tuple_list=i.tuple.split(" ")
-                try:
-                    output_list[tuple_list[self.key]+" points"].append(i.tuple)
-                except KeyError:
-                    output_list[tuple_list[self.key]+" points"]=[i.tuple]
-        for i in output_list:
-            output_list[i]=len(output_list[i])
+        with tracer.start_span("Histogram", child_of=span) as operator_span:
+
+            output_list={}
+            while True:
+                future=self.input.get_next.remote();
+                input1=ray.get(future)#self.input.get_next()
+                if not input1:
+                    break
+                for i in input1:
+                    tuple_list=i.tuple.split(" ")
+                    try:
+                        output_list[tuple_list[self.key]+" points"].append(i.tuple)
+                    except KeyError:
+                        output_list[tuple_list[self.key]+" points"]=[i.tuple]
+            for i in output_list:
+                output_list[i]=len(output_list[i])
         return output_list
         pass
 
@@ -413,7 +524,6 @@ class Histogram(Operator):
 @ray.remote
 class OrderBy(Operator):
     """OrderBy operator.
-
     Attributes:
         input (Operator): A handle to the input
         comparator (function): The user-defined comparator used for sorting the
@@ -427,7 +537,7 @@ class OrderBy(Operator):
     # Initializes order-by operator
     def __init__(self, input, comparator, ASC=True, track_prov=False,
                                                     propagate_prov=False):
-        Operator.__init__(self,name="OrderBy",
+        Operator(OrderBy, self).__init__(name="OrderBy",
                                       track_prov=track_prov,
                                       propagate_prov=propagate_prov)
         # YOUR CODE HERE
@@ -439,26 +549,32 @@ class OrderBy(Operator):
     # Returns the sorted input (or None if done)
     def get_next(self):
         # YOUR CODE HERE
-        output_list=[]
-        while True:
-            future=self.input.get_next.remote();
-            input1=ray.get(future)#self.input.get_next()
-            if not input1:
-                break
-            for i in input1:
-                output_list.append(ATuple(i.tuple,None,OrderBy))
+        with tracer.start_span("OrderBy", child_of=span) as operator_span:
+            output_list=[]
+            while True:
+                future=self.input.get_next.remote();
+                input1=ray.get(future)#self.input.get_next()
+                if not input1:
+                    break
+                for i in input1:
+                    if self.propagate_prov:
+                        output_list.append(ATuple(i.tuple,i.metadata,self))
+                    else:
+                        output_list.append(ATuple(i.tuple,None,self))
         return self.comparator.apply(output_list,self.ASC)
         pass
 
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        return self.input.lineage(tuples)
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        return self.input.where(att_index,tuples)
         pass
 
 @ray.remote
@@ -474,7 +590,6 @@ class Comparator:
 @ray.remote
 class TopK(Operator):
     """TopK operator.
-
     Attributes:
         input (Operator): A handle to the input.
         k (int): The maximum number of tuples to output.
@@ -485,7 +600,7 @@ class TopK(Operator):
     """
     # Initializes top-k operator
     def __init__(self, input, k=None, track_prov=False, propagate_prov=False):
-        Operator.__init__(self,name="TopK", track_prov=track_prov,
+        Operator(TopK, self).__init__(name="TopK", track_prov=track_prov,
                                    propagate_prov=propagate_prov)
         # YOUR CODE HERE
         self.input=input
@@ -495,32 +610,38 @@ class TopK(Operator):
     # Returns the first k tuples in the input (or None if done)
     def get_next(self):
         # YOUR CODE HERE
-        future=self.input.get_next.remote();
-        input1=ray.get(future)#self.input.get_next()
-        if self.k==None:
-            return input1[0]
-        output_list=[]
-        for i in range(0,self.k):
-            output_list.append(input1[i])
+        with tracer.start_span("TopK", child_of=span) as operator_span:
+
+            future=self.input.get_next.remote();
+            input1=ray.get(future)#self.input.get_next()
+            if self.k==None:
+                return input1[0]
+            output_list=[]
+            for i in range(0,self.k):
+                if self.propagate_prov:
+                    output_list.append(ATuple(input1[i].tuple,input1[i].metadata,self))
+                else:
+                    output_list.append(ATuple(input1[i].tuple,None,self))
         return output_list
         pass
 
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        return self.input.lineage(tuples)
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
+        return self.input.where(att_index,tuples)
         pass
 
 # Filter operator
 @ray.remote
 class Select(Operator):
     """Select operator.
-
     Attributes:
         input (Operator): A handle to the input.
         predicate (function): The selection predicate.
@@ -532,7 +653,7 @@ class Select(Operator):
     # Initializes select operator
     def __init__(self, input, predicate, track_prov=False,
                                          propagate_prov=False):
-        Operator.__init__(self,name="Select", track_prov=track_prov,
+        Operator(Filter, self).__init__(name="Select", track_prov=track_prov,
                                      propagate_prov=propagate_prov)
         # YOUR CODE HERE
         self.input=input
@@ -542,12 +663,14 @@ class Select(Operator):
     # Returns next batch of tuples that pass the filter (or None if done)
     def get_next(self):
         # YOUR CODE HERE
-        output_list=[]
-        future=self.input.get_next.remote();
-        input1=ray.get(future)#self.input.get_next()
-        for i in input1:
-            if(self.predicate.apply(i)):
-                output_list.append(i)
+        with tracer.start_span("Select", child_of=span) as operator_span:
+
+            output_list=[]
+            future=self.input.get_next.remote();
+            input1=ray.get(future)#self.input.get_next()
+            for i in input1:
+                if(self.predicate.apply(i)):
+                    output_list.append(i)
         return output_list
         pass
 
@@ -562,8 +685,85 @@ class Predicate:
     def apply(self, tuple):
         return tuple[self.att] == self.uid 
 
-if __name__ == "__main__":
+@ray.remote
+class Distinct(Operator):
+    def __init__(self, input, fields_to_compare=0, track_prov=False,
+                                                    propagate_prov=False):
+        self.input=input
+        self.fields_to_compare=fields_to_compare
 
+    def get_next(self):
+        with tracer.start_span("Distinct", child_of=span) as operator_span:
+
+            ans={}
+            while True:
+                input_future=self.input.get_next.remote()
+                input_tuple=ray.get(input_future)#self.input.get_next()
+                if not input_tuple:
+                    break
+                for i in input_tuple:
+                    #logger.info(i.tuple)
+                    input_tuple_list=i.tuple.split(",")
+                    #logger.info(input_tuple_list)
+                    key=input_tuple_list[self.fields_to_compare]
+                    if key=="":
+                        key="empty"
+                    if key=="Mozilla" or key=="Mozilla Firefox":
+                        key="Firefox"
+                    if key=="Internet Explorer" or key == "InternetExplorer":
+                        key="IE"
+                    if key=="Google Chrome":
+                        key="Chrome"
+                    if(key in ans):
+                        ans[key]+=1
+                    else:
+                        ans[key]=1
+        return ans
+
+@ray.remote
+class Map(Operator):
+    def __init__(self, input, keys, track_prov=False, propagate_prov=False):
+        self.input=input
+        self.keys=keys
+    def get_next(self):
+        with tracer.start_span("Map", child_of=span) as operator_span:
+
+            ans=[]
+            while True:
+                tuple_future=self.input.get_next.remote()
+                tuple_list=ray.get(tuple_future)#self.input.get_next()
+                if not tuple_list:
+                    break
+                for i in tuple_list:
+                    att_list=i.tuple.split(",")
+                    for j in range(0,len(att_list)+3):
+                        if not att_list[j]:
+                            att_list[j]="0"
+                        if j==1:
+                            time_list=att_list[j].split(" ")
+                            date_list=time_list[0].split("-")
+                            hour_list=time_list[1].split(":")
+                            new_att=date_list[1:3]+(hour_list[0:2])
+                            att_list=att_list[0:1]+new_att+att_list[2:len(att_list)]
+                        if j in [9,10,11]:
+                            name_string=att_list[j]
+                            #logger.info(name_string)
+                            if name_string=="0" or 0 or '0':
+                                name_string="empty"
+                            if name_string=="Mozilla" or name_string=="Mozilla Firefox":
+                                name_string="Firefox"
+                            if name_string=="Internet Explorer" or name_string == "InternetExplorer":
+                                name_string="IE"
+                            if name_string=="Google Chrome":
+                                name_string="Chrome"
+                            att_list[j]=self.keys[name_string]
+                    i=att_list[1:len(att_list)]
+                    ans.append(i)
+        return ans;
+
+
+if __name__ == "__main__":
+    tracer = init_tracer('first-service')
     logger.info("Assignment #1")
 
     # TASK 1: Implement 'likeness' prediction query for User A and Movie M
@@ -575,16 +775,18 @@ if __name__ == "__main__":
     #       AND R.MID = 'M'
 
     # YOUR CODE HERE
-    filter_friend=Filter.remote(sys.argv[2],0)
-    scan_friends=Scan.remote("../data/friends.txt",filter_friend,False,False)
-    filter_movie=Filter.remote(sys.argv[4],1)
-    scan_movies=Scan.remote("../data/movie_ratings.txt",filter_movie,False,False)
-    join_opt=Join.remote(scan_friends,scan_movies,1,0,False,False)
-    average=AggFun.remote()
-    #projection=Project.remote(join_opt,[4],False,False)
-    join_future=join_opt.get_next.remote()
-    ans1=ray.get(average.AVG.remote(join_future,4))
-    logger.info(ans1)
+    if sys.argv[2]=="1":
+        with tracer.start_span('latency-for-task1-assignment1') as span:
+            filter_friend=Filter.remote(sys.argv[8],0)
+            scan_friends=Scan.remote(sys.argv[4],filter_friend,True,False)
+            filter_movie=Filter.remote(sys.argv[10],1)
+            scan_movies=Scan.remote(sys.argv[6],filter_movie,True,False)
+            join_opt=Join.remote(scan_friends,scan_movies,1,0,True,False)
+            average=AggFun.remote()
+            #projection=Project(join_opt,[4],False,False)
+            tuples=join_opt.get_next.remote()
+            ans1=ray.get(average.AVG.remote(tuples,4))
+            logger.info(ans1)
 
     # TASK 2: Implement recommendation query for User A
     #
@@ -598,19 +800,20 @@ if __name__ == "__main__":
     #        LIMIT 1 )
 
     # YOUR CODE HERE
-    filter_friend=Filter.remote(sys.argv[2],0)
-    scan_friends=Scan.remote("../data/friends.txt",filter_friend,False,False)
-    scan_movies=Scan.remote("../data/movie_ratings.txt",None,False,False)
-    join_opt=Join.remote(scan_friends,scan_movies,1,0,False,False)
-    projection_pre=Project.remote(join_opt,[3,4],False,False)
-    average=AggFun.remote()
-    group_by_opt=GroupBy.remote(projection_pre,0,1,average,False,False)
-    compare_opt=Comparator.remote(1)
-    order_by_opt=OrderBy.remote(group_by_opt,compare_opt,False,False,False)
-    top_k_opt=TopK.remote(order_by_opt,1,False,False)
-    projection=Project.remote(top_k_opt,[0],False,False)
-    ans2=ray.get(projection.get_next.remote())[0]
-    logger.info(int(ans2.tuple))
+    if sys.argv[2]=="2":
+        filter_friend2=Filter.remote(sys.argv[8],0)
+        scan_friends2=Scan.remote(sys.argv[4],filter_friend2,True,True)
+        scan_movies2=Scan.remote(sys.argv[6],None,True,True)
+        join_opt2=Join.remote(scan_friends2,scan_movies2,1,0,True,True)
+        #projection_pre2=Project(join_opt2,[3,4],True,True)
+        average2=AggFun.remote()
+        group_by_opt2=GroupBy.remote(join_opt2,3,4,average2,True,True)
+        compare_opt2=Comparator.remote(1)
+        order_by_opt2=OrderBy.remote(group_by_opt2,compare_opt2,False,True,True)
+        top_k_opt2=TopK.remote(order_by_opt2,1,True,True)
+        projection2=Project.remote(top_k_opt2,[0],True,True)
+        ans2=ray.get(projection2.get_next.remote())[0]
+        logger.info(int(ans2.tuple))
 
     # TASK 3: Implement explanation query for User A and Movie M
     #
@@ -621,16 +824,17 @@ if __name__ == "__main__":
     #       AND R.MID = 'M'
 
     # YOUR CODE HERE
-    filter_friend=Filter.remote(sys.argv[2],0)
-    scan_friends=Scan.remote("../data/friends.txt",filter_friend,False,False)
-    filter_movie=Filter.remote(sys.argv[4],1)
-    scan_movies=Scan.remote("../data/movie_ratings.txt",filter_movie,False,False)
-    join_opt=Join.remote(scan_friends,scan_movies,1,0,False,False)
-    #average=AggFun.remote()
-    #projection=Project.remote(join_opt,[4],False,False)
-    hist_opt=Histogram.remote(join_opt,4,False,False)
-    ans3=ray.get(hist_opt.get_next.remote())
-    logger.info(ans3)
+    if sys.argv[2]=="3":
+        filter_friend=Filter.remote(sys.argv[8],0)
+        scan_friends=Scan.remote(sys.argv[4],filter_friend,False,False)
+        filter_movie=Filter.remote(sys.argv[10],1)
+        scan_movies=Scan.remote(sys.argv[6],filter_movie,False,False)
+        join_opt=Join.remote(scan_friends,scan_movies,1,0,False,False)
+        #average=AggFun.remote()
+        #projection=Project.remote(join_opt,[4],False,False)
+        hist_opt=Histogram.remote(join_opt,4,False,False)
+        ans3=ray.get(hist_opt.get_next.remote())
+        logger.info(ans3)
 
     # TASK 4: Turn your data operators into Ray actors
     #
@@ -642,18 +846,84 @@ if __name__ == "__main__":
     # TASK 1: Implement lineage query for movie recommendation
 
     # YOUR CODE HERE
-
+    if sys.argv[2]=="2":
+        ans2_lineage_list=ans2.lineage()
+        ans_tuple_list=[]
+        if(len(ans2_lineage_list)==1):
+            for i in ans2_lineage_list:
+                for j in i:
+                    ans_tuple_list.append(j.tuple)
+        else:
+            part=[]
+            for i in ans2_lineage_list:
+                for j in i:
+                    part.append(j.tuple)
+                ans_tuple_list.append(part)
+        logger.info(ans_tuple_list)
 
     # TASK 2: Implement where-provenance query for 'likeness' prediction
 
     # YOUR CODE HERE
+    if sys.argv[2]=="1":
+        as2_tsk2=join_opt.where(4,tuples)
+        logger.info(as2_tsk2)
 
 
     # TASK 3: Implement how-provenance query for movie recommendation
 
     # YOUR CODE HERE
-
-
+    if sys.argv[2]=="2":
+        """ 
+        another way
+        half_len=int(len(ans_tuple_list)/2)
+        as2_tsk3=""
+        for i in range(half_len):
+            one_pair="(f"+str(scan_friends2.intermediate[ans_tuple_list[i]])+"*r"+str(scan_movies2.intermediate[ans_tuple_list[i+half_len]])+"@"+ans_tuple_list[i+half_len].split(" ")[2]+"), "
+            as2_tsk3=as2_tsk3+one_pair
+        as2_tsk3="AVG( "+as2_tsk3[0:len(as2_tsk3)-2]+" )"
+        logger.info(as2_tsk3)
+        """
+        logger.info(ans2.how())
     # TASK 4: Retrieve most responsible tuples for movie recommendation
 
     # YOUR CODE HERE
+    if sys.argv[2]=="2":
+        all_how=group_by_opt2.intermediate
+        #request=all_how[ans2.tuple]
+        ans_key=projection2.intermediate[ans2.tuple].tuple
+        max=ans_key.split(" ")[1]
+        max_other=0
+        if len(all_how[ans_key])==1:
+            responsibility_list=all_how[ans_key][0].tuple.split(" ")
+            logger.info( [((responsibility_list[0],responsibility_list[1]),1),((responsibility_list[2],responsibility_list[3],responsibility_list[4]),1)])
+        elif len(all_how[ans_key])==2:
+            t1=all_how[ans_key][0].tuple.split(" ")
+            t2=all_how[ans_key][1].tuple.split(" ")
+            if(t1[4]>max):
+                logger.info( [((t1[0],t1[1]),1),((t1[2],t1[3],t1[4]),1)])
+            if(t2[4]>max):
+                logger.info( [((t2[0],t2[1]),1),((t2[2],t2[3],t2[4]),1)])
+            else:
+                logger.info( [((t1[0],t1[1]),0.5),((t1[2],t1[3],t1[4]),0.5),((t2[0],t2[1]),0.5),((t2[2],t2[3],t2[4]),0.5)])
+        else:
+            ans_list=[]
+            for i in all_how:
+                temp_score=i.split(" ")[1]
+                if max_other<temp_score:
+                    max_other=temp_score
+            for i in all_how[ans_key]:
+                test_for_counterfactual=(len(all_how[ans_key])*max-i.tuple.split(" ")[4])/(len(all_how[ans_key])-1)
+                if test_for_counterfactual<max_other:
+                    temp=i.tuple.split(" ")
+                    ans_list.append(((temp[0],temp[1]),1))
+                    ans_list.append(((temp[2],temp[3],temp[4]),1))
+            for i in all_how[ans_key]:
+                for j in all_how[ans_key]:
+                    if i!=j:
+                        test_for_05=(len(all_how[ans_key])*max-i.tuple.split(" ")[4]-j.tuple.split(" ")[4])/(len(all_how[ans_key])-2)
+                        if test_for_05<max_other:
+                            temp=i.tuple.split(" ")
+                            ans_list.append(((temp[0],temp[1]),0.5))
+                            ans_list.append(((temp[2],temp[3],temp[4]),0.5))
+                            break
+            logger.info(ans_list)
