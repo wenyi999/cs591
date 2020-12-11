@@ -171,6 +171,7 @@ class Scan(Operator):
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        with tracer.start_span("ScanLineage", child_of=span) as operator_lineage_span:
         return tuples
         pass
 
@@ -266,16 +267,17 @@ class Join(Operator):
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
-        answer_list=[]
-        for i in tuples:
-            left_list=[]
-            right_list=[]
-            for j in i:
-                left_tuple=self.intermediate[j.tuple][0]
-                left_list.append(self.left_input.lineage(left_tuple))
-                right_tuple=self.intermediate[j.tuple][1]
-                right_list.append(self.right_input.lineage(right_tuple))
-            answer_list.append(left_list+right_list)
+        with tracer.start_span("JoinLineage", child_of=span) as operator_lineage_span:
+            answer_list=[]
+            for i in tuples:
+                left_list=[]
+                right_list=[]
+                for j in i:
+                    left_tuple=self.intermediate[j.tuple][0]
+                    left_list.append(ray.get(self.left_input.lineage.remote(left_tuple)))
+                    right_tuple=self.intermediate[j.tuple][1]
+                    right_list.append(ray.get(self.right_input.lineage.remote(right_tuple)))
+                answer_list.append(left_list+right_list)
         return answer_list
         pass
 
@@ -293,9 +295,9 @@ class Join(Operator):
                 ans_tuple.append(self.intermediate[i.tuple][0])
                 op=self.left_input
         if att_index<2:
-            return op.where(att_index,ans_tuple)
+            return ray.get(op.where.remote(att_index,ans_tuple))
         else:
-            return op.where(att_index - 2,ans_tuple)
+            return ray.get(op.where(att_index - 2,ans_tuple))
         pass
 
 # Project operator
@@ -354,18 +356,18 @@ class Project(Operator):
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
+        with tracer.start_span("ProjectLineage", child_of=span) as operator_lineage_span:
+            if not self.fields_to_keep:
+                return ray.get(self.input.lineage.remote(tuples)) 
+            else:
+                ans_list=[]
+                for i in tuples:
+                    ans_part_list=[]
+                    for j in i:
+                        ans_part_list.append(self.intermediate[j.tuple])
+                    ans_list.append(ans_part_list)
 
-        if not self.fields_to_keep:
-            return self.input.lineage(tuples) 
-        else:
-            ans_list=[]
-            for i in tuples:
-                ans_part_list=[]
-                for j in i:
-                    ans_part_list.append(self.intermediate[j.tuple])
-                ans_list.append(ans_part_list)
-
-            return self.input.lineage(ans_list)
+                return ray.get(self.input.lineage.remote(ans_list))
         pass
 
     # Returns the where-provenance of the attribute
@@ -375,7 +377,7 @@ class Project(Operator):
         ans_list=[]
         for i in tuples:
             ans_list.append(self.intermediate[i.tuple])
-        return self.input.where(self.fields_to_keep[att_index],ans_list)
+        return ray.get(self.input.where.remote(self.fields_to_keep[att_index],ans_list))
         pass
 
 # Group-by operator
@@ -444,11 +446,12 @@ class GroupBy(Operator):
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
-        ans_list=[]
-        for i in tuples:
-            for j in i:
-                ans_list.append(self.intermediate[j.tuple])
-        return self.input.lineage(ans_list)
+        with tracer.start_span("GroupByLineage", child_of=span) as operator_lineage_span:
+            ans_list=[]
+            for i in tuples:
+                for j in i:
+                    ans_list.append(self.intermediate[j.tuple])
+        return ray.get(self.input.lineage.remote(ans_list))
         pass
 
     # Returns the where-provenance of the attribute
@@ -458,7 +461,7 @@ class GroupBy(Operator):
         ans_list=[]
         for i in tuples:
             ans_list.extend(self.intermediate[i.tuple])
-        return self.input.where(self.value,ans_list)
+        return ray.get(self.input.where.remote(self.value,ans_list))
         pass
 
 @ray.remote
@@ -567,14 +570,16 @@ class OrderBy(Operator):
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
-        return self.input.lineage(tuples)
+        with tracer.start_span("OrderByLineage", child_of=span) as operator_lineage_span:
+
+        return ray.get(self.input.lineage.remote(tuples))
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
-        return self.input.where(att_index,tuples)
+        return ray.get(self.input.where.remote(att_index,tuples))
         pass
 
 @ray.remote
@@ -628,14 +633,16 @@ class TopK(Operator):
     # Returns the lineage of the given tuples
     def lineage(self, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 1 IN ASSIGNMENT 2)
-        return self.input.lineage(tuples)
+        with tracer.start_span("TopKLineage", child_of=span) as operator_lineage_span:
+
+        return ray.get(self.input.lineage.remote(tuples))
         pass
 
     # Returns the where-provenance of the attribute
     # at index 'att_index' for each tuple in 'tuples'
     def where(self, att_index, tuples):
         # YOUR CODE HERE (ONLY FOR TASK 2 IN ASSIGNMENT 2)
-        return self.input.where(att_index,tuples)
+        return ray.get(self.input.where.remote(att_index,tuples))
         pass
 
 # Filter operator
@@ -801,19 +808,20 @@ if __name__ == "__main__":
 
     # YOUR CODE HERE
     if sys.argv[2]=="2":
-        filter_friend2=Filter.remote(sys.argv[8],0)
-        scan_friends2=Scan.remote(sys.argv[4],filter_friend2,True,True)
-        scan_movies2=Scan.remote(sys.argv[6],None,True,True)
-        join_opt2=Join.remote(scan_friends2,scan_movies2,1,0,True,True)
-        #projection_pre2=Project(join_opt2,[3,4],True,True)
-        average2=AggFun.remote()
-        group_by_opt2=GroupBy.remote(join_opt2,3,4,average2,True,True)
-        compare_opt2=Comparator.remote(1)
-        order_by_opt2=OrderBy.remote(group_by_opt2,compare_opt2,False,True,True)
-        top_k_opt2=TopK.remote(order_by_opt2,1,True,True)
-        projection2=Project.remote(top_k_opt2,[0],True,True)
-        ans2=ray.get(projection2.get_next.remote())[0]
-        logger.info(int(ans2.tuple))
+        with tracer.start_span('latency-for-task2-assignment1') as span:
+            filter_friend2=Filter.remote(sys.argv[8],0)
+            scan_friends2=Scan.remote(sys.argv[4],filter_friend2,True,True)
+            scan_movies2=Scan.remote(sys.argv[6],None,True,True)
+            join_opt2=Join.remote(scan_friends2,scan_movies2,1,0,True,True)
+            #projection_pre2=Project(join_opt2,[3,4],True,True)
+            average2=AggFun.remote()
+            group_by_opt2=GroupBy.remote(join_opt2,3,4,average2,True,True)
+            compare_opt2=Comparator.remote(1)
+            order_by_opt2=OrderBy.remote(group_by_opt2,compare_opt2,False,True,True)
+            top_k_opt2=TopK.remote(order_by_opt2,1,True,True)
+            projection2=Project.remote(top_k_opt2,[0],True,True)
+            ans2=ray.get(projection2.get_next.remote())[0]
+            logger.info(int(ans2.tuple))
 
     # TASK 3: Implement explanation query for User A and Movie M
     #
@@ -825,16 +833,17 @@ if __name__ == "__main__":
 
     # YOUR CODE HERE
     if sys.argv[2]=="3":
-        filter_friend=Filter.remote(sys.argv[8],0)
-        scan_friends=Scan.remote(sys.argv[4],filter_friend,False,False)
-        filter_movie=Filter.remote(sys.argv[10],1)
-        scan_movies=Scan.remote(sys.argv[6],filter_movie,False,False)
-        join_opt=Join.remote(scan_friends,scan_movies,1,0,False,False)
-        #average=AggFun.remote()
-        #projection=Project.remote(join_opt,[4],False,False)
-        hist_opt=Histogram.remote(join_opt,4,False,False)
-        ans3=ray.get(hist_opt.get_next.remote())
-        logger.info(ans3)
+        with tracer.start_span('latency-for-task3-assignment1') as span:
+            filter_friend=Filter.remote(sys.argv[8],0)
+            scan_friends=Scan.remote(sys.argv[4],filter_friend,False,False)
+            filter_movie=Filter.remote(sys.argv[10],1)
+            scan_movies=Scan.remote(sys.argv[6],filter_movie,False,False)
+            join_opt=Join.remote(scan_friends,scan_movies,1,0,False,False)
+            #average=AggFun.remote()
+            #projection=Project.remote(join_opt,[4],False,False)
+            hist_opt=Histogram.remote(join_opt,4,False,False)
+            ans3=ray.get(hist_opt.get_next.remote())
+            logger.info(ans3)
 
     # TASK 4: Turn your data operators into Ray actors
     #
@@ -847,25 +856,27 @@ if __name__ == "__main__":
 
     # YOUR CODE HERE
     if sys.argv[2]=="2":
-        ans2_lineage_list=ans2.lineage()
-        ans_tuple_list=[]
-        if(len(ans2_lineage_list)==1):
-            for i in ans2_lineage_list:
-                for j in i:
-                    ans_tuple_list.append(j.tuple)
-        else:
-            part=[]
-            for i in ans2_lineage_list:
-                for j in i:
-                    part.append(j.tuple)
-                ans_tuple_list.append(part)
-        logger.info(ans_tuple_list)
+        with tracer.start_span('latency-for-lineage') as span:
+            ans2_lineage_list=ray.get(ans2.lineage.remote())
+
+            ans_tuple_list=[]
+            if(len(ans2_lineage_list)==1):
+                for i in ans2_lineage_list:
+                    for j in i:
+                        ans_tuple_list.append(j.tuple)
+            else:
+                part=[]
+                for i in ans2_lineage_list:
+                    for j in i:
+                        part.append(j.tuple)
+                    ans_tuple_list.append(part)
+            logger.info(ans_tuple_list)
 
     # TASK 2: Implement where-provenance query for 'likeness' prediction
 
     # YOUR CODE HERE
     if sys.argv[2]=="1":
-        as2_tsk2=join_opt.where(4,tuples)
+        as2_tsk2=ray.get(join_opt.where.remote(4,tuples))
         logger.info(as2_tsk2)
 
 
@@ -883,7 +894,7 @@ if __name__ == "__main__":
         as2_tsk3="AVG( "+as2_tsk3[0:len(as2_tsk3)-2]+" )"
         logger.info(as2_tsk3)
         """
-        logger.info(ans2.how())
+        logger.info(ray.get(ans2.how.remote()))
     # TASK 4: Retrieve most responsible tuples for movie recommendation
 
     # YOUR CODE HERE
